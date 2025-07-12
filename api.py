@@ -15,6 +15,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from ultralytics import YOLO
 import uvicorn
+import requests
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -96,6 +97,37 @@ def process_image(image_bytes: bytes, conf_threshold: float = 0.5) -> Dict[str, 
         "detections": detections,
         "total_detections": len(detections)
     }
+
+def download_file_from_google_drive(id, destination):
+    URL = "https://docs.google.com/uc?export=download"
+    session = requests.Session()
+    response = session.get(URL, params={'id': id}, stream=True)
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            token = value
+    if token:
+        params = {'id': id, 'confirm': token}
+        response = session.get(URL, params=params, stream=True)
+    CHUNK_SIZE = 32768
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(CHUNK_SIZE):
+            if chunk:
+                f.write(chunk)
+
+def ensure_model():
+    model_path = "runs/road_classification/yolov9_road_damage_fast/weights/best.pt"
+    file_id = "12gcuryDv6xPULtndkTNAdq3-euJOWKWj"
+    if not os.path.exists(model_path):
+        print("Downloading model from Google Drive...")
+        download_file_from_google_drive(file_id, model_path)
+        print("Model downloaded.")
+    else:
+        print("Model already exists.")
+
+# Ensure model is present before loading
+ensure_model()
 
 @app.on_event("startup")
 async def startup_event():
